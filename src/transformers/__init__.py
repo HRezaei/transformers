@@ -792,6 +792,7 @@ _import_structure = {
     "models.swinv2": ["Swinv2Config"],
     "models.switch_transformers": ["SwitchTransformersConfig"],
     "models.t5": ["T5Config"],
+    "models.t5la": ["T5LAConfig"],
     "models.table_transformer": ["TableTransformerConfig"],
     "models.tapas": [
         "TapasConfig",
@@ -1062,6 +1063,7 @@ else:
     _import_structure["models.speech_to_text"].append("Speech2TextTokenizer")
     _import_structure["models.speecht5"].append("SpeechT5Tokenizer")
     _import_structure["models.t5"].append("T5Tokenizer")
+    _import_structure["models.t5la"].append("T5LATokenizer")
     _import_structure["models.udop"].append("UdopTokenizer")
     _import_structure["models.xglm"].append("XGLMTokenizer")
     _import_structure["models.xlm_roberta"].append("XLMRobertaTokenizer")
@@ -3605,6 +3607,18 @@ else:
             "load_tf_weights_in_t5",
         ]
     )
+    _import_structure["models.t5la"].extend(
+        [
+            "T5LAEncoderModel",
+            "T5LAForConditionalGeneration",
+            "T5LAForQuestionAnswering",
+            "T5LAForSequenceClassification",
+            "T5LAForTokenClassification",
+            "T5LAModel",
+            "T5LAPreTrainedModel",
+            "load_tf_weights_in_t5la",
+        ]
+    )
     _import_structure["models.table_transformer"].extend(
         [
             "TableTransformerForObjectDetection",
@@ -4601,6 +4615,14 @@ else:
             "TFT5PreTrainedModel",
         ]
     )
+    _import_structure["models.t5la"].extend(
+        [
+            "TFT5LAEncoderModel",
+            "TFT5LAForConditionalGeneration",
+            "TFT5LAModel",
+            "TFT5LAPreTrainedModel",
+        ]
+    )
     _import_structure["models.tapas"].extend(
         [
             "TFTapasForMaskedLM",
@@ -5029,6 +5051,14 @@ else:
             "FlaxT5ForConditionalGeneration",
             "FlaxT5Model",
             "FlaxT5PreTrainedModel",
+        ]
+    )
+    _import_structure["models.t5la"].extend(
+        [
+            "FlaxT5LAEncoderModel",
+            "FlaxT5LAForConditionalGeneration",
+            "FlaxT5LAModel",
+            "FlaxT5LAPreTrainedModel",
         ]
     )
     _import_structure["models.vision_encoder_decoder"].append("FlaxVisionEncoderDecoderModel")
@@ -5872,6 +5902,7 @@ if TYPE_CHECKING:
         SwitchTransformersConfig,
     )
     from .models.t5 import T5Config
+    from .models.t5la import T5LAConfig
     from .models.table_transformer import (
         TableTransformerConfig,
     )
@@ -6160,6 +6191,7 @@ if TYPE_CHECKING:
         from .models.speech_to_text import Speech2TextTokenizer
         from .models.speecht5 import SpeechT5Tokenizer
         from .models.t5 import T5Tokenizer
+        from .models.t5la import T5LATokenizer
         from .models.udop import UdopTokenizer
         from .models.xglm import XGLMTokenizer
         from .models.xlm_roberta import XLMRobertaTokenizer
@@ -8232,6 +8264,16 @@ if TYPE_CHECKING:
             T5PreTrainedModel,
             load_tf_weights_in_t5,
         )
+        from .models.t5la import (
+            T5LAEncoderModel,
+            T5LAForConditionalGeneration,
+            T5LAForQuestionAnswering,
+            T5LAForSequenceClassification,
+            T5LAForTokenClassification,
+            T5LAModel,
+            T5LAPreTrainedModel,
+            load_tf_weights_in_t5la,
+        )
         from .models.table_transformer import (
             TableTransformerForObjectDetection,
             TableTransformerModel,
@@ -9039,6 +9081,12 @@ if TYPE_CHECKING:
             TFT5Model,
             TFT5PreTrainedModel,
         )
+        from .models.t5la import (
+            TFT5LAEncoderModel,
+            TFT5LAForConditionalGeneration,
+            TFT5LAModel,
+            TFT5LAPreTrainedModel,
+        )
         from .models.tapas import (
             TFTapasForMaskedLM,
             TFTapasForQuestionAnswering,
@@ -9395,6 +9443,12 @@ if TYPE_CHECKING:
             FlaxT5ForConditionalGeneration,
             FlaxT5Model,
             FlaxT5PreTrainedModel,
+        )
+        from .models.t5la import (
+            FlaxT5LAEncoderModel,
+            FlaxT5LAForConditionalGeneration,
+            FlaxT5LAModel,
+            FlaxT5LAPreTrainedModel,
         )
         from .models.vision_encoder_decoder import FlaxVisionEncoderDecoderModel
         from .models.vision_text_dual_encoder import FlaxVisionTextDualEncoderModel

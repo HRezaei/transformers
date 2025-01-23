@@ -253,6 +253,7 @@ from . import (
     swinv2,
     switch_transformers,
     t5,
+    t5la,
     table_transformer,
     tapas,
     textnet,
