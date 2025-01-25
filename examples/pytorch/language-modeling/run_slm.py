@@ -542,17 +542,16 @@ def main():
         total_length = len(concatenated_examples[list(examples.keys())[0]])
         # We drop the small remainder, and if the total_length < block_size  we exclude this batch and return an empty dict.
         # We could add padding if the model supported it instead of this drop, you can customize this part to your needs.
-        total_length = (total_length // block_size) * block_size
+        total_length = (total_length // (block_size + lookahead_size)) * block_size
         # Split by chunks of max_len.
         result = {}
         for k, t in concatenated_examples.items():
-            result[k] = [t[i: i + block_size] for i in range(0, total_length, block_size) if len(t[i: i + block_size])==block_size]
+            result[k] = [t[i: i + block_size] for i in range(0, total_length, block_size)]
             if k == 'input_ids':
                 samples = []
                 for i in range(0, total_length, block_size):
                     samples.append([t[i + look_head_index: i + look_head_index + block_size]
                                     for look_head_index in range(1, lookahead_size + 1)
-                                    if len(t[i: i + block_size]) == block_size
                                     ])
                 result['lookahead_targets'] = samples
         result["labels"] = result["input_ids"].copy()
