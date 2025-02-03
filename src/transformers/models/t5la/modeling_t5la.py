@@ -1960,7 +1960,8 @@ class T5LAForConditionalGeneration(T5LAPreTrainedModel, GenerationMixin):
             lm_logits = lm_logits[:, 0]
         else:
             lookahead_logits = None
-            lookahead_loss = None
+
+        lookahead_loss = None
         loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss(ignore_index=-100)
