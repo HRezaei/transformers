@@ -536,6 +536,27 @@ def main():
         result["labels"] = result["input_ids"].copy()
         return result
 
+    def group_texts_for_lookahead_e(examples):
+        # Concatenate all texts.
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+        # We drop the small remainder, and if the total_length < block_size  we exclude this batch and return an empty dict.
+        # We could add padding if the model supported it instead of this drop, you can customize this part to your needs.
+        sequence_length = block_size + lookahead_size
+        total_length = (total_length // sequence_length) * sequence_length
+        # Split by chunks of max_len.
+        result = {
+            k: [t[i: i + block_size] for i in range(0, total_length, sequence_length)]
+            for k, t in concatenated_examples.items()
+        }
+        labels_dict = {
+            'lookahead_targets': [t[i+block_size: i + block_size + lookahead_size] for i in range(0, total_length, sequence_length)]
+            for k, t in concatenated_examples.items() if k == 'input_ids'
+        }
+        result = result | labels_dict
+        result["labels"] = result["input_ids"].copy()
+        return result
+
     def group_texts_for_lookahead(examples):
         # Concatenate all texts.
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
@@ -566,10 +587,16 @@ def main():
     grouping_function = group_texts
     model_args_overrides = [i.split('=') for i in model_args.config_overrides.split(',')]
     model_args_overrides = {i[0]: i[1] for i in model_args_overrides}
-    if "lookahead_size" in model_args_overrides:
-        lookahead_size = int(model_args_overrides["lookahead_size"])
-        if lookahead_size > 0:
-            grouping_function = group_texts_for_lookahead
+    lookahead_grouping_functions = {
+        "la": group_texts_for_lookahead,
+        "lae": group_texts_for_lookahead_e,
+
+    }
+    lookahead_size = int(model_args_overrides["lookahead_size"]) if "lookahead_size" in model_args_overrides else None
+    lookahead_type = model_args_overrides["lookahead_type"] if "lookahead_type" in model_args_overrides else None
+
+    if lookahead_size and lookahead_size > 0:
+        grouping_function = lookahead_grouping_functions[lookahead_type]
 
     with training_args.main_process_first(desc="grouping texts together"):
         if not data_args.streaming:
