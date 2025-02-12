@@ -536,7 +536,7 @@ def main():
         result["labels"] = result["input_ids"].copy()
         return result
 
-    def group_texts_for_lookahead_e(examples):
+    def group_texts_for_lookahead_efficient(examples):
         # Concatenate all texts.
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
         total_length = len(concatenated_examples[list(examples.keys())[0]])
@@ -587,16 +587,14 @@ def main():
     grouping_function = group_texts
     model_args_overrides = [i.split('=') for i in model_args.config_overrides.split(',')]
     model_args_overrides = {i[0]: i[1] for i in model_args_overrides}
-    lookahead_grouping_functions = {
-        "la": group_texts_for_lookahead,
-        "lae": group_texts_for_lookahead_e,
 
-    }
     lookahead_size = int(model_args_overrides["lookahead_size"]) if "lookahead_size" in model_args_overrides else None
     lookahead_type = model_args_overrides["lookahead_type"] if "lookahead_type" in model_args_overrides else None
-
     if lookahead_size and lookahead_size > 0:
-        grouping_function = lookahead_grouping_functions[lookahead_type]
+        if lookahead_type == "la":
+            grouping_function = group_texts_for_lookahead
+        else:
+            grouping_function = group_texts_for_lookahead_efficient
 
     with training_args.main_process_first(desc="grouping texts together"):
         if not data_args.streaming:
