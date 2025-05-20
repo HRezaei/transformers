@@ -318,21 +318,27 @@ def main():
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
-                split=f"train[:{data_args.validation_split_percentage}%]",
+                split="train" if data_args.streaming else f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
                 streaming=data_args.streaming,
                 trust_remote_code=model_args.trust_remote_code,
             )
-            raw_datasets["train"] = load_dataset(
-                data_args.dataset_name,
-                data_args.dataset_config_name,
-                split=f"train[{data_args.validation_split_percentage}%:]",
-                cache_dir=model_args.cache_dir,
-                token=model_args.token,
-                streaming=data_args.streaming,
-                trust_remote_code=model_args.trust_remote_code,
-            )
+            if data_args.streaming:
+                validation_subset = raw_datasets["validation"].take(data_args.max_eval_samples)
+                raw_datasets["train"] = raw_datasets["validation"].skip(data_args.max_eval_samples).take(
+                    data_args.max_train_samples)
+                raw_datasets["validation"] = validation_subset
+            else:
+                raw_datasets["train"] = load_dataset(
+                    data_args.dataset_name,
+                    data_args.dataset_config_name,
+                    split="train" if data_args.streaming else f"train[{data_args.validation_split_percentage}%:]",
+                    cache_dir=model_args.cache_dir,
+                    token=model_args.token,
+                    streaming=data_args.streaming,
+                    trust_remote_code=model_args.trust_remote_code,
+                )
     else:
         data_files = {}
         dataset_args = {}
@@ -552,16 +558,21 @@ def main():
             raise ValueError("--do_train requires a train dataset")
         train_dataset = lm_datasets["train"]
         if data_args.max_train_samples is not None:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-            train_dataset = train_dataset.select(range(max_train_samples))
-
+            if data_args.streaming:
+                train_dataset = train_dataset.take(data_args.max_train_samples)
+            else:
+                max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+                train_dataset = train_dataset.select(range(max_train_samples))
     if training_args.do_eval:
         if "validation" not in tokenized_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = lm_datasets["validation"]
         if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
+            if data_args.streaming:
+                eval_dataset = eval_dataset.take(data_args.max_eval_samples)
+            else:
+                max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+                eval_dataset = eval_dataset.select(range(max_eval_samples))
 
         def preprocess_logits_for_metrics(logits, labels):
             if isinstance(logits, tuple):
@@ -607,10 +618,13 @@ def main():
 
         metrics = train_result.metrics
 
-        max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+        if data_args.streaming:
+            metrics["train_samples"] = data_args.max_train_samples
+        else:
+            max_train_samples = (
+                data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+            )
+            metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
@@ -622,8 +636,11 @@ def main():
 
         metrics = trainer.evaluate()
 
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        if data_args.streaming:
+            metrics["eval_samples"] = data_args.max_eval_samples
+        else:
+            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:
