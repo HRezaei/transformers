@@ -234,6 +234,14 @@ class DataTrainingArguments:
 
 
 def main():
+    # Check if the proper GPU is available and set the device
+    # Wiithout this, calling the command
+    # CUDA_VISIBLE_DEVICES="0,1" torchrun --nproc_per_node=2 transformers/examples/pytorch/language-modeling/run_slm.py ...
+    # raises the error:
+    # Duplicate GPU detected : rank 0 and rank 1 both on CUDA device 81000
+    local_rank = int(os.environ['LOCAL_RANK'])
+    if local_rank != -1:
+        torch.cuda.set_device(local_rank)
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
