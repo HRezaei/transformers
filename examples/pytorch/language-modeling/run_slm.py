@@ -47,9 +47,11 @@ from transformers import (
     set_seed, AutoModelForSeq2SeqLM, MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING,
 )
 from transformers.testing_utils import CaptureLogger
+from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
+import wandb
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -231,6 +233,13 @@ class DataTrainingArguments:
             if self.validation_file is not None:
                 extension = self.validation_file.split(".")[-1]
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
+
+
+class OnTrainStartCallback(TrainerCallback):
+    def on_train_begin(self, args, state, control, **kwargs):
+        import wandb
+        if wandb.run is not None:            
+            wandb.run.summary["SLURM_JOB_ID"] = os.environ.get("SLURM_JOB_ID", None)
 
 
 def main():
@@ -671,6 +680,7 @@ def main():
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
         if training_args.do_eval and not is_torch_xla_available()
         else None,
+        callbacks=[OnTrainStartCallback()]
     )
 
     # Training
