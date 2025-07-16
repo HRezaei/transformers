@@ -19,6 +19,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
 import torch
@@ -50,7 +51,6 @@ from .configuration_t5la import T5LaConfig, T5LaModuleConfig
 logger = logging.get_logger(__name__)
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaRMSNorm with T5Gemma->T5La
 class T5LaRMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
         super().__init__()
@@ -71,7 +71,6 @@ class T5LaRMSNorm(nn.Module):
         return f"{tuple(self.weight.shape)}, eps={self.eps}"
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaMLP with T5Gemma->T5La
 class T5LaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -91,7 +90,6 @@ class T5LaMLP(nn.Module):
         return down_proj
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaRotaryEmbedding with T5Gemma->T5La
 class T5LaRotaryEmbedding(nn.Module):
     def __init__(self, config, device=None):
         super().__init__()
@@ -207,7 +205,6 @@ def eager_attention_forward(
     return attn_output, attn_weights
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaSelfAttention with T5Gemma->T5La
 class T5LaSelfAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -283,7 +280,6 @@ class T5LaSelfAttention(nn.Module):
         return attn_output, attn_weights
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaCrossAttention with T5Gemma->T5La
 class T5LaCrossAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -369,7 +365,6 @@ class T5LaCrossAttention(nn.Module):
         return attn_output, attn_weights
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaEncoderLayer with T5Gemma->T5La
 class T5LaEncoderLayer(GradientCheckpointingLayer):
     """Encoder sub-layer."""
 
@@ -422,7 +417,6 @@ class T5LaEncoderLayer(GradientCheckpointingLayer):
         return hidden_states
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaDecoderLayer with T5Gemma->T5La
 class T5LaDecoderLayer(T5LaEncoderLayer):
     """Decoder sub-layer: an extra cross-attention layer."""
 
@@ -481,7 +475,6 @@ class T5LaDecoderLayer(T5LaEncoderLayer):
         return hidden_states
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaClassificationHead with T5Gemma->T5La
 class T5LaClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
@@ -496,7 +489,6 @@ class T5LaClassificationHead(nn.Module):
         return hidden_states
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaLMHead with T5Gemma->T5La
 class T5LaLMHead(nn.Module):
     """Head for language modeling (generation) tasks."""
 
@@ -509,7 +501,6 @@ class T5LaLMHead(nn.Module):
         return logits
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaAttention with T5Gemma->T5La
 class T5LaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -585,7 +576,6 @@ class T5LaAttention(nn.Module):
 
 
 @auto_docstring
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaPreTrainedModel with T5Gemma->T5La
 class T5LaPreTrainedModel(PreTrainedModel):
     config_class = T5LaConfig
     base_model_prefix = "model"
@@ -695,7 +685,6 @@ def make_default_2d_attention_mask(
     return attention_mask
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaEncoder with T5Gemma->T5La
 class T5LaEncoder(T5LaPreTrainedModel):
     _can_record_outputs = {
         "attentions": T5LaSelfAttention,
@@ -792,7 +781,6 @@ class T5LaEncoder(T5LaPreTrainedModel):
         )
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaDecoder with T5Gemma->T5La
 class T5LaDecoder(T5LaEncoder):
     _can_record_outputs = {
         "attentions": OutputRecorder(T5LaSelfAttention, index=1),
@@ -905,8 +893,34 @@ class T5LaDecoder(T5LaEncoder):
         )
 
 
+class LookAheadHeads(nn.Module):
+    def __init__(self, config: T5LaConfig):
+        super().__init__()
+        self.heads = nn.ModuleList(
+            [
+                # K heads for LA positions:
+                T5LaLMHead(config.decoder.hidden_size, config.vocab_size, bias=False)
+                for _ in range(config.lookahead_size)
+            ]
+        )
+
+    def forward(self, x):
+        # ModuleList can act as an iterable, or be indexed using ints
+        # Apply each head to the shared features
+        logits = [head(x) for head in self.heads]
+
+        # Stack logits along a new dimension to create a tensor of shape [batch_size, num_heads, output_size]
+        logits = torch.stack(logits, dim=1)
+        return logits
+
+
+@dataclass
+class Seq2SeqLMOutputLA(Seq2SeqLMOutput):
+    lookahead_logits: torch.FloatTensor = None
+    lookahead_loss: Optional[torch.FloatTensor] = None
+
+
 @auto_docstring
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaModel with T5Gemma->T5La
 class T5LaModel(T5LaPreTrainedModel):
     def __init__(self, config: T5LaConfig):
         super().__init__(config)
@@ -993,7 +1007,6 @@ class T5LaModel(T5LaPreTrainedModel):
 
 
 @auto_docstring
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaEncoderModel with T5Gemma->T5La
 class T5LaEncoderModel(T5LaPreTrainedModel):
     def __init__(self, config: T5LaConfig):
         super().__init__(config)
@@ -1030,7 +1043,6 @@ class T5LaEncoderModel(T5LaPreTrainedModel):
         return encoder_outputs
 
 
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaForConditionalGeneration with T5Gemma->T5La
 class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["model.decoder.embed_tokens.weight", "lm_head.out_proj.weight"]
     _tp_plan = {"lm_head.out_proj": "colwise_rep"}
@@ -1044,6 +1056,9 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
         self.vocab_size = config.decoder.vocab_size
         self.lm_head = T5LaLMHead(config.decoder.hidden_size, self.vocab_size)
         self.loss_type = "ForMaskedLM"
+
+        if config.lookahead_type == "la":
+            self.la_heads = LookAheadHeads(config)
 
         self.post_init()
 
@@ -1082,6 +1097,7 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
+        lookahead_targets: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple[torch.FloatTensor], Seq2SeqLMOutput]:
         r"""
@@ -1092,6 +1108,9 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
             config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
             (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+        lookahead_targets (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the loss of the LA heads or positions (models of type la, laa, and laa2 have
+            LA heads and lae has LA positions)
         """
         if self.training and self.config._attn_implementation != "eager":
             msg = (
@@ -1132,13 +1151,25 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             logits = logits / decoder_config.final_logit_softcapping
             logits = torch.tanh(logits)
             logits = logits * decoder_config.final_logit_softcapping
+        if self.config.lookahead_size > 0:
+            lookahead_logits = self.la_heads(hidden_states[:, slice_indices, :])
+        else:
+            lookahead_logits = None
 
+        lookahead_loss = None
         loss = None
         if labels is not None:
             # Input has right-shifted so we directly perform masked lm loss
             loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+            if self.config.lookahead_size > 0:
+                lookahead_loss = self.loss_function(
+                    lookahead_logits.reshape(-1, lookahead_logits.size(-1)),
+                    lookahead_targets.view(-1),
+                    vocab_size=self.vocab_size,
+                )
+                loss = (loss + lookahead_loss) / 2
 
-        return Seq2SeqLMOutput(
+        return Seq2SeqLMOutputLA(
             loss=loss,
             logits=logits,
             past_key_values=decoder_outputs.past_key_values,
@@ -1148,6 +1179,8 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             encoder_last_hidden_state=decoder_outputs.encoder_last_hidden_state,
             encoder_hidden_states=decoder_outputs.encoder_hidden_states,
             encoder_attentions=decoder_outputs.encoder_attentions,
+            lookahead_logits=lookahead_logits,
+            lookahead_loss=lookahead_loss,
         )
 
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
@@ -1155,7 +1188,6 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
 
 
 @auto_docstring
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaForSequenceClassification with T5Gemma->T5La
 class T5LaForSequenceClassification(T5LaPreTrainedModel):
     def __init__(self, config: T5LaConfig, is_encoder_decoder: Optional[bool] = None):
         r"""
@@ -1297,7 +1329,6 @@ class T5LaForSequenceClassification(T5LaPreTrainedModel):
 
 
 @auto_docstring
-# Copied from transformers.models.t5gemma.modeling_t5gemma.T5GemmaForTokenClassification with T5Gemma->T5La
 class T5LaForTokenClassification(T5LaPreTrainedModel):
     def __init__(self, config: T5LaConfig, is_encoder_decoder: Optional[bool] = None):
         r"""

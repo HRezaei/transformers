@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 from typing import Any, Callable, Optional, Union
 
 import torch
@@ -67,7 +68,156 @@ logger = logging.get_logger(__name__)
 
 
 class T5LaModuleConfig(Gemma2Config):
-    pass
+    r"""
+        This is the configuration class to store the configuration of a [`T5LaModuleModel`]. It is used to instantiate an T5LaModule
+        model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
+        defaults will yield a similar configuration to that of the T5LaModule-7B.
+        e.g. [hrezaei/T5LA](https://huggingface.co/hrezaei/T5LA)
+        Configuration objects inherit from [`PretrainedConfig`] and can be used to control the model outputs. Read the
+        documentation from [`PretrainedConfig`] for more information.
+        Args:
+            vocab_size (`int`, *optional*, defaults to 256000):
+                Vocabulary size of the T5LaModule model. Defines the number of different tokens that can be represented by the
+                `inputs_ids` passed when calling [`T5LaModuleModel`]
+            hidden_size (`int`, *optional*, defaults to 2304):
+                Dimension of the hidden representations.
+            intermediate_size (`int`, *optional*, defaults to 9216):
+                Dimension of the MLP representations.
+            num_hidden_layers (`int`, *optional*, defaults to 26):
+                Number of hidden layers in the Transformer decoder.
+            num_attention_heads (`int`, *optional*, defaults to 8):
+                Number of attention heads for each attention layer in the Transformer decoder.
+            num_key_value_heads (`int`, *optional*, defaults to 4):
+                This is the number of key_value heads that should be used to implement Grouped Query Attention. If
+                `num_key_value_heads=num_attention_heads`, the model will use Multi Head Attention (MHA), if
+                `num_key_value_heads=1` the model will use Multi Query Attention (MQA) otherwise GQA is used. When
+                converting a multi-head checkpoint to a GQA checkpoint, each group key and value head should be constructed
+                by meanpooling all the original heads within that group. For more details, check out [this
+                paper](https://huggingface.co/papers/2305.13245). If it is not specified, will default to
+                `num_attention_heads`.
+            head_dim (`int`, *optional*, defaults to 256):
+                The attention head dimension.
+            hidden_activation (`str` or `function`, *optional*, defaults to `"gelu_pytorch_tanh"`):
+                The non-linear activation function (function or string) in the decoder. Will default to `"gelu_pytorch_tanh"`
+                if not specified. `"gelu_pytorch_tanh"` uses an approximation of the `"gelu"` activation function.
+            max_position_embeddings (`int`, *optional*, defaults to 8192):
+                The maximum sequence length that this model might ever be used with.
+            initializer_range (`float`, *optional*, defaults to 0.02):
+                The standard deviation of the truncated_normal_initializer for initializing all weight matrices.
+            rms_norm_eps (`float`, *optional*, defaults to 1e-06):
+                The epsilon used by the rms normalization layers.
+            use_cache (`bool`, *optional*, defaults to `True`):
+                Whether or not the model should return the last key/values attentions (not used by all models). Only
+                relevant if `config.is_decoder=True`.
+            pad_token_id (`int`, *optional*, defaults to 0):
+                Padding token id.
+            eos_token_id (`int`, *optional*, defaults to 1):
+                End of stream token id.
+            bos_token_id (`int`, *optional*, defaults to 2):
+                Beginning of stream token id.
+            tie_word_embeddings (`bool`, *optional*, defaults to `True`):
+                Whether to tie weight embeddings
+            rope_theta (`float`, *optional*, defaults to 10000.0):
+                The base period of the RoPE embeddings.
+            attention_bias (`bool`, defaults to `False`, *optional*, defaults to `False`):
+                Whether to use a bias in the query, key, value and output projection layers during self-attention.
+            attention_dropout (`float`, *optional*, defaults to 0.0):
+                The dropout ratio for the attention probabilities.
+            query_pre_attn_scalar (`float`, *optional*, defaults to 256):
+                scaling factor used on the attention scores
+            sliding_window (`int`, *optional*, defaults to 4096):
+                in T5LaModule, every other layer uses sliding window attention. This is the size of the sliding window.
+            layer_types (`list`, *optional*):
+                Attention pattern for each layer.
+            final_logit_softcapping (`float`, *optional*, defaults to 30.0):
+                scaling factor when applying tanh softcapping on the logits.
+            attn_logit_softcapping (`float`, *optional*, defaults to 50.0):
+                scaling factor when applying tanh softcapping on the attention scores.
+            lookahead_type (`string`, *optional*, defaults to "la"):
+                other options are "laa", "laa2", and "lae". For more details, see the paper:
+                https://openreview.net/pdf?id=D38rTnrkal
+            lookahead_size (`int`, *optional*, defaults to 1):
+                Number of future tokens to be predicted after the immediately next token. The K parameter as explained in
+                the paper https://openreview.net/pdf?id=D38rTnrkal
+
+        ```python
+        >>> from transformers import T5LaModuleModel, T5LaModuleConfig
+        >>> # Initializing a T5LaModule t5_gemma_module-7b style configuration
+        >>> configuration = T5LaModuleConfig()
+        >>> # Initializing a model from the t5_gemma_module-7b style configuration
+        >>> model = T5LaModuleModel(configuration)
+        >>> # Accessing the model configuration
+        >>> configuration = model.config
+        ```"""
+
+    model_type = "t5la"
+    keys_to_ignore_at_inference = ["past_key_values", "lookahead_logits", "lookahead_loss"]
+
+    def __init__(
+        self,
+        vocab_size=256000,
+        hidden_size=2304,
+        intermediate_size=9216,
+        num_hidden_layers=26,
+        num_attention_heads=8,
+        num_key_value_heads=4,
+        head_dim=256,
+        hidden_activation="gelu_pytorch_tanh",
+        max_position_embeddings=8192,
+        initializer_range=0.02,
+        rms_norm_eps=1e-6,
+        use_cache=True,
+        pad_token_id=0,
+        eos_token_id=1,
+        bos_token_id=2,
+        tie_word_embeddings=True,
+        rope_theta=10000.0,
+        attention_bias=False,
+        attention_dropout=0.0,
+        query_pre_attn_scalar=256,
+        sliding_window=4096,
+        layer_types=None,
+        final_logit_softcapping=30.0,
+        attn_logit_softcapping=50.0,
+        lookahead_type="la",
+        lookahead_size=1,
+        **kwargs,
+    ):
+        super().__init__(
+            pad_token_id=pad_token_id,
+            bos_token_id=bos_token_id,
+            eos_token_id=eos_token_id,
+            tie_word_embeddings=tie_word_embeddings,
+            **kwargs,
+        )
+        self.vocab_size = vocab_size
+        self.max_position_embeddings = max_position_embeddings
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.head_dim = head_dim
+        self.num_key_value_heads = num_key_value_heads
+        self.initializer_range = initializer_range
+        self.rms_norm_eps = rms_norm_eps
+        self.use_cache = use_cache
+        self.rope_theta = rope_theta
+        self.attention_bias = attention_bias
+        self.attention_dropout = attention_dropout
+        self.hidden_activation = hidden_activation
+        self.query_pre_attn_scalar = query_pre_attn_scalar
+        self.sliding_window = sliding_window
+        self.final_logit_softcapping = final_logit_softcapping
+        self.attn_logit_softcapping = attn_logit_softcapping
+        self.layer_types = layer_types
+
+        if self.layer_types is None:
+            self.layer_types = [
+                "sliding_attention" if bool((i + 1) % 2) else "full_attention" for i in range(self.num_hidden_layers)
+            ]
+        layer_type_validation(self.layer_types)
+        self.lookahead_type = lookahead_type
+        self.lookahead_size = lookahead_size
 
 
 class T5LaConfig(PretrainedConfig):
@@ -75,7 +225,7 @@ class T5LaConfig(PretrainedConfig):
     This is the configuration class to store the configuration of a [`T5LaModel`]. It is used to instantiate an T5La
     model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
     defaults will yield a similar configuration to a hypothetical balanced Gemma2 encoder-decoder model.
-    e.g. [google/t5la-2b-2b-prefixlm-it](https://huggingface.co/google/t5la-2b-2b-prefixlm-it)
+    e.g. [hrezaei/T5LA](https://huggingface.co/hrezaei/T5LA)
     ```python
     >>> from transformers import T5LaConfig, T5LaModel
     >>> t5la_config = T5LaConfig.from_pretrained("google/t5la-2b-2b-prefixlm-it")
@@ -100,6 +250,12 @@ class T5LaConfig(PretrainedConfig):
             Whether tie input and output embeddings.
         vocab_size (`int`, *optional*, defaults to 256000):
             Vocabulary size of the T5La model (the same as Gemma 2).
+        lookahead_type (`string`, *optional*, defaults to "la"):
+            other options are "laa", "laa2", and "lae". For more details, see the paper:
+            https://openreview.net/pdf?id=D38rTnrkal
+        lookahead_size (`int`, *optional*, defaults to 1):
+            Number of future tokens to be predicted after the immediately next token. The K parameter as explained in
+            the paper https://openreview.net/pdf?id=D38rTnrkal
         kwargs (additional keyword arguments, optional, *optional*):
             Will be passed to the PretrainedConfig base class.
     """
@@ -149,6 +305,8 @@ class T5LaConfig(PretrainedConfig):
         attention_dropout: float = 0.0,
         tie_word_embeddings: bool = True,
         vocab_size: int = 256000,
+        lookahead_type: str = "la",
+        lookahead_size: int = 1,
         **kwargs,
     ):
         if isinstance(encoder, dict):
@@ -196,6 +354,8 @@ class T5LaConfig(PretrainedConfig):
 
         # Used in pipeline generation.
         self.vocab_size = vocab_size
+        self.lookahead_type = lookahead_type
+        self.lookahead_size = lookahead_size
 
     def __setattr__(self, key, value):
         shared_attr_with_submodules = [
@@ -758,6 +918,37 @@ class T5LaDecoder(T5LaEncoder):
         )
 
 
+class LookAheadHeads(nn.Module):
+    def __init__(self, config: T5LaConfig, k: int) -> None:
+        super().__init__()
+        self.k = k
+        self.heads = nn.ModuleList(
+            [
+                # K heads for LA positions:
+                T5LaLMHead(config.decoder.hidden_size, config.vocab_size, bias=False)
+                for _ in range(self.k)
+            ]
+        )
+
+    def forward(self, x):
+        # ModuleList can act as an iterable, or be indexed using ints
+        # Apply each head to the shared features
+        logits = [head(x) for head in self.heads]
+
+        # Stack logits along a new dimension to create a tensor of shape [batch_size, num_heads, output_size]
+        if self.k > 1:
+            logits = torch.stack(logits, dim=1)
+        else:
+            logits = logits[0]
+        return logits
+
+
+@dataclass
+class Seq2SeqLMOutputLA(Seq2SeqLMOutput):
+    lookahead_logits: torch.FloatTensor = None
+    lookahead_loss: Optional[torch.FloatTensor] = None
+
+
 @auto_docstring
 class T5LaModel(T5LaPreTrainedModel):
     def __init__(self, config: T5LaConfig):
@@ -895,6 +1086,11 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
         self.lm_head = T5LaLMHead(config.decoder.hidden_size, self.vocab_size)
         self.loss_type = "ForMaskedLM"
 
+        if config.lookahead_type == "la":
+            self.la_heads = LookAheadHeads(config, config.lookahead_size)
+        elif config.lookahead_type in ["laa", "laa2"]:
+            self.la_heads = LookAheadHeads(config, 1)
+
         self.post_init()
 
     def set_output_embeddings(self, new_embeddings):
@@ -932,6 +1128,7 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
         use_cache: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
+        lookahead_targets: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple[torch.FloatTensor], Seq2SeqLMOutput]:
         r"""
@@ -942,6 +1139,9 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
             config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
             (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+        lookahead_targets (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the loss of the LA heads or positions (models of type la, laa, and laa2 have
+            LA heads and lae has LA positions)
         """
         if self.training and self.config._attn_implementation != "eager":
             msg = (
@@ -956,6 +1156,24 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
         if labels is not None and decoder_input_ids is None and decoder_inputs_embeds is None:
             # get decoder inputs from shifting lm labels to the right
             decoder_input_ids = self._shift_right(labels)
+
+        if self.config.lookahead_type == "lae":
+            #  Extend decoder input with lookahead_size extra positions filled by zero as especial tokens:
+            zeros_to_add = torch.zeros(
+                decoder_input_ids.shape[0],
+                self.config.lookahead_size,
+                device=decoder_input_ids.device,
+                dtype=decoder_input_ids.dtype,
+            )
+            decoder_input_ids = torch.cat((decoder_input_ids, zeros_to_add), dim=1)
+            if decoder_attention_mask is not None:
+                ones_to_add = torch.ones(
+                    decoder_attention_mask.shape[0],
+                    self.config.lookahead_size,
+                    device=decoder_attention_mask.device,
+                    dtype=decoder_attention_mask.dtype,
+                )
+                decoder_attention_mask = torch.cat((decoder_attention_mask, ones_to_add), dim=1)
 
         decoder_outputs: Seq2SeqModelOutput = self.model(
             input_ids=input_ids,
@@ -983,12 +1201,32 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             logits = torch.tanh(logits)
             logits = logits * decoder_config.final_logit_softcapping
 
+        lookahead_logits = None
+        if self.config.lookahead_type == "la":
+            lookahead_logits = self.la_heads(hidden_states[:, slice_indices, :])
+        elif self.config.lookahead_type == "laa":
+            la_input = torch.repeat_interleave(hidden_states[:, [-1]], self.config.lookahead_size, dim=1)
+            lookahead_logits = self.la_heads(la_input)
+        elif self.config.lookahead_type == "laa2":
+            lookahead_logits = self.la_heads(hidden_states[:, -self.config.lookahead_size :])
+        elif self.config.lookahead_type == "lae":
+            lookahead_logits = logits[:, -self.config.lookahead_size :].contiguous()
+            logits = logits[:, : -self.config.lookahead_size].contiguous()
+
+        lookahead_loss = None
         loss = None
         if labels is not None:
             # Input has right-shifted so we directly perform masked lm loss
             loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+            if self.config.lookahead_size > 0:
+                lookahead_loss = self.loss_function(
+                    lookahead_logits.reshape(-1, lookahead_logits.size(-1)),
+                    lookahead_targets.view(-1),
+                    vocab_size=self.vocab_size,
+                )
+                loss = (loss + lookahead_loss) / 2
 
-        return Seq2SeqLMOutput(
+        return Seq2SeqLMOutputLA(
             loss=loss,
             logits=logits,
             past_key_values=decoder_outputs.past_key_values,
@@ -998,6 +1236,8 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             encoder_last_hidden_state=decoder_outputs.encoder_last_hidden_state,
             encoder_hidden_states=decoder_outputs.encoder_hidden_states,
             encoder_attentions=decoder_outputs.encoder_attentions,
+            lookahead_logits=lookahead_logits,
+            lookahead_loss=lookahead_loss,
         )
 
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):

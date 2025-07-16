@@ -90,6 +90,12 @@ class T5LaModuleConfig(PretrainedConfig):
             scaling factor when applying tanh softcapping on the logits.
         attn_logit_softcapping (`float`, *optional*, defaults to 50.0):
             scaling factor when applying tanh softcapping on the attention scores.
+        lookahead_type (`string`, *optional*, defaults to "la"):
+            other options are "laa", "laa2", and "lae". For more details, see the paper:
+            https://openreview.net/pdf?id=D38rTnrkal
+        lookahead_size (`int`, *optional*, defaults to 1):
+            Number of future tokens to be predicted after the immediately next token. The K parameter as explained in
+            the paper https://openreview.net/pdf?id=D38rTnrkal
 
     ```python
     >>> from transformers import T5LaModuleModel, T5LaModuleConfig
@@ -101,8 +107,8 @@ class T5LaModuleConfig(PretrainedConfig):
     >>> configuration = model.config
     ```"""
 
-    model_type = "t5_gemma_module"
-    keys_to_ignore_at_inference = ["past_key_values"]
+    model_type = "t5la"
+    keys_to_ignore_at_inference = ["past_key_values", "lookahead_logits", "lookahead_loss"]
     base_model_tp_plan = {
         "layers.*.self_attn.q_proj": "colwise",
         "layers.*.self_attn.k_proj": "colwise",
@@ -144,6 +150,8 @@ class T5LaModuleConfig(PretrainedConfig):
         layer_types=None,
         final_logit_softcapping=30.0,
         attn_logit_softcapping=50.0,
+        lookahead_type="la",
+        lookahead_size=1,
         **kwargs,
     ):
         super().__init__(
@@ -179,6 +187,8 @@ class T5LaModuleConfig(PretrainedConfig):
                 "sliding_attention" if bool((i + 1) % 2) else "full_attention" for i in range(self.num_hidden_layers)
             ]
         layer_type_validation(self.layer_types)
+        self.lookahead_type = lookahead_type
+        self.lookahead_size = lookahead_size
 
 
 class T5LaConfig(PretrainedConfig):
@@ -186,7 +196,7 @@ class T5LaConfig(PretrainedConfig):
     This is the configuration class to store the configuration of a [`T5LaModel`]. It is used to instantiate an T5La
     model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
     defaults will yield a similar configuration to a hypothetical balanced Gemma2 encoder-decoder model.
-    e.g. [google/t5la-2b-2b-prefixlm-it](https://huggingface.co/google/t5la-2b-2b-prefixlm-it)
+    e.g. [hrezaei/T5LA](https://huggingface.co/hrezaei/T5LA)
     ```python
     >>> from transformers import T5LaConfig, T5LaModel
     >>> t5la_config = T5LaConfig.from_pretrained("google/t5la-2b-2b-prefixlm-it")
@@ -211,6 +221,12 @@ class T5LaConfig(PretrainedConfig):
             Whether tie input and output embeddings.
         vocab_size (`int`, *optional*, defaults to 256000):
             Vocabulary size of the T5La model (the same as Gemma 2).
+        lookahead_type (`string`, *optional*, defaults to "la"):
+            other options are "laa", "laa2", and "lae". For more details, see the paper:
+            https://openreview.net/pdf?id=D38rTnrkal
+        lookahead_size (`int`, *optional*, defaults to 1):
+            Number of future tokens to be predicted after the immediately next token. The K parameter as explained in
+            the paper https://openreview.net/pdf?id=D38rTnrkal
         kwargs (additional keyword arguments, optional, *optional*):
             Will be passed to the PretrainedConfig base class.
     """
@@ -260,6 +276,8 @@ class T5LaConfig(PretrainedConfig):
         attention_dropout: float = 0.0,
         tie_word_embeddings: bool = True,
         vocab_size: int = 256000,
+        lookahead_type: str = "la",
+        lookahead_size: int = 1,
         **kwargs,
     ):
         if isinstance(encoder, dict):
@@ -307,6 +325,8 @@ class T5LaConfig(PretrainedConfig):
 
         # Used in pipeline generation.
         self.vocab_size = vocab_size
+        self.lookahead_type = lookahead_type
+        self.lookahead_size = lookahead_size
 
     def __setattr__(self, key, value):
         shared_attr_with_submodules = [
