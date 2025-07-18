@@ -73,6 +73,22 @@ python run_clm_no_trainer.py \
     --output_dir /tmp/test-clm
 ```
 
+### T5 and seq2seq language modeling 
+To train seq2seq models like T5, you can use the run_slm.py script, which works with the same configurations as
+run_clm.py. For example the following command pretrains a T5 model from scratch:
+
+```bash
+python run_slm.py \
+    --model_type t5 \
+    --tokenizer_name t5-small \
+    --dataset_name=HuggingFaceFW/clean-wikipedia \
+    --dataset_config_name=en \
+    --config_overrides="d_model=64,num_heads=2,decoder_start_token_id=0,num_layers=2,d_ff=128" \
+    --do_train \
+    --do_eval \
+    --output_dir /tmp/test-slm
+```
+
 ### GPT-2/GPT and causal language modeling with fill-in-the middle objective
 
 The following example fine-tunes GPT-2 on WikiText-2 but using the Fill-in-middle training objective. FIM objective was proposed in [Efficient Training of Language Models to Fill in the Middle](https://huggingface.co/papers/2207.14255). They showed that autoregressive language models can learn to infill text after applying a straightforward transformation to the dataset, which simply moves a span of text from the middle of a document to its end.
