@@ -894,13 +894,14 @@ class T5LaDecoder(T5LaEncoder):
 
 
 class LookAheadHeads(nn.Module):
-    def __init__(self, config: T5LaConfig):
+    def __init__(self, config: T5LaConfig, k: int) -> None:
         super().__init__()
+        self.k = k
         self.heads = nn.ModuleList(
             [
                 # K heads for LA positions:
                 T5LaLMHead(config.decoder.hidden_size, config.vocab_size, bias=False)
-                for _ in range(config.lookahead_size)
+                for _ in range(self.k)
             ]
         )
 
@@ -910,7 +911,10 @@ class LookAheadHeads(nn.Module):
         logits = [head(x) for head in self.heads]
 
         # Stack logits along a new dimension to create a tensor of shape [batch_size, num_heads, output_size]
-        logits = torch.stack(logits, dim=1)
+        if self.k > 1:
+            logits = torch.stack(logits, dim=1)
+        else:
+            logits = logits[0]
         return logits
 
 
@@ -1058,7 +1062,9 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
         self.loss_type = "ForMaskedLM"
 
         if config.lookahead_type == "la":
-            self.la_heads = LookAheadHeads(config)
+            self.la_heads = LookAheadHeads(config, config.lookahead_size)
+        elif config.lookahead_type in ["laa", "laa2"]:
+            self.la_heads = LookAheadHeads(config, 1)
 
         self.post_init()
 
@@ -1169,9 +1175,15 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             logits = logits / decoder_config.final_logit_softcapping
             logits = torch.tanh(logits)
             logits = logits * decoder_config.final_logit_softcapping
+
         lookahead_logits = None
         if self.config.lookahead_type == "la":
             lookahead_logits = self.la_heads(hidden_states[:, slice_indices, :])
+        elif self.config.lookahead_type == "laa":
+            la_input = torch.repeat_interleave(hidden_states[:, [-1]], self.config.lookahead_size, dim=1)
+            lookahead_logits = self.la_heads(la_input)
+        elif self.config.lookahead_type == "laa2":
+            lookahead_logits = self.la_heads(hidden_states[:, -self.config.lookahead_size :])
         elif self.config.lookahead_type == "lae":
             lookahead_logits = logits[:, -self.config.lookahead_size :].contiguous()
             logits = logits[:, : -self.config.lookahead_size].contiguous()
