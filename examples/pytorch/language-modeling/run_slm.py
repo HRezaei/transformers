@@ -92,6 +92,24 @@ class ModelArguments:
             )
         },
     )
+    decoder_config_overrides: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Override some existing default config settings for decoder module when a model is trained from scratch."
+                " Example: n_embd=10,resid_pdrop=0.2,scale_attn_weights=false,summary_type=cls_index"
+            )
+        },
+    )
+    encoder_config_overrides: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Override some existing default config settings for an encoder module when a model is trained from "
+                "scratch. Example: n_embd=10,resid_pdrop=0.2,scale_attn_weights=false,summary_type=cls_index"
+            )
+        },
+    )
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )
@@ -453,6 +471,14 @@ def main():
             logger.info(f"Overriding config: {model_args.config_overrides}")
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
+        if model_args.decoder_config_overrides is not None:
+            logger.info(f"Overriding decoder config: {model_args.decoder_config_overrides}")
+            config.decoder.update_from_string(model_args.decoder_config_overrides)
+            logger.info(f"New decoder config: {config.decoder}")
+        if model_args.encoder_config_overrides is not None:
+            logger.info(f"Overriding encoder config: {model_args.encoder_config_overrides}")
+            config.encoder.update_from_string(model_args.encoder_config_overrides)
+            logger.info(f"New encoder config: {config.encoder}")
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
