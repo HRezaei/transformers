@@ -283,6 +283,14 @@ def split_streaming_dataset(
 
 
 def main():
+    # Check if the proper GPU is available and set the device
+    # Wiithout this, calling the command
+    # CUDA_VISIBLE_DEVICES="0,1" torchrun --nproc_per_node=2 transformers/examples/pytorch/language-modeling/run_slm.py ...
+    # raises the error:
+    # Duplicate GPU detected : rank 0 and rank 1 both on CUDA device 81000
+    local_rank = int(os.environ.get('LOCAL_RANK', -1))
+    if local_rank != -1:
+        torch.cuda.set_device(local_rank)
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
@@ -603,6 +611,47 @@ def main():
         result["labels"] = result["input_ids"].copy()
         return result
 
+    def group_texts_for_lookahead_efficient(examples):
+        # Concatenate all texts.
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+        # We drop the small remainder, and if the total_length < block_size  we exclude this batch and return an empty dict.
+        # We could add padding if the model supported it instead of this drop, you can customize this part to your needs.
+        sequence_length = block_size + lookahead_size
+        total_length = (total_length // sequence_length) * sequence_length
+        # Split by chunks of max_len.
+        result = {
+            k: [t[i: i + block_size] for i in range(0, total_length, sequence_length)]
+            for k, t in concatenated_examples.items()
+        }
+        labels_dict = {
+            'lookahead_targets': [t[i+block_size: i + block_size + lookahead_size] for i in range(0, total_length, sequence_length)]
+            for k, t in concatenated_examples.items() if k == 'input_ids'
+        }
+        result = result | labels_dict
+        result["labels"] = result["input_ids"].copy()
+        return result
+
+    def group_texts_for_lookahead(examples):
+        # Concatenate all texts.
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+        # We drop the small remainder, and if the total_length < block_size  we exclude this batch and return an empty dict.
+        # We could add padding if the model supported it instead of this drop, you can customize this part to your needs.
+        total_length = (total_length // (block_size + lookahead_size)) * block_size
+        # Split by chunks of max_len.
+        result = {}
+        for k, t in concatenated_examples.items():
+            result[k] = [t[i: i + block_size] for i in range(0, total_length, block_size)]
+            if k == 'input_ids':
+                samples = []
+                for i in range(0, total_length, block_size):
+                    samples.append([t[i + look_head_index: i + look_head_index + block_size]
+                                    for look_head_index in range(1, lookahead_size + 1)
+                                    ])
+                result['lookahead_targets'] = samples
+        result["labels"] = result["input_ids"].copy()
+        return result
     # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a remainder
     # for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value might be slower
     # to preprocess.
@@ -610,10 +659,22 @@ def main():
     # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
     # https://huggingface.co/docs/datasets/process#map
 
+    grouping_function = group_texts
+    model_args_overrides = [i.split('=') for i in model_args.config_overrides.split(',')]
+    model_args_overrides = {i[0]: i[1] for i in model_args_overrides}
+
+    lookahead_size = int(model_args_overrides["lookahead_size"]) if "lookahead_size" in model_args_overrides else None
+    lookahead_type = model_args_overrides["lookahead_type"] if "lookahead_type" in model_args_overrides else None
+    if lookahead_size and lookahead_size > 0:
+        if lookahead_type == "la":
+            grouping_function = group_texts_for_lookahead
+        else:
+            grouping_function = group_texts_for_lookahead_efficient
+
     with training_args.main_process_first(desc="grouping texts together"):
         if not data_args.streaming:
             lm_datasets = tokenized_datasets.map(
-                group_texts,
+                grouping_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 load_from_cache_file=not data_args.overwrite_cache,
@@ -621,7 +682,7 @@ def main():
             )
         else:
             lm_datasets = tokenized_datasets.map(
-                group_texts,
+                grouping_function,
                 batched=True,
             )
 
