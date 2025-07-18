@@ -1126,6 +1126,24 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             # get decoder inputs from shifting lm labels to the right
             decoder_input_ids = self._shift_right(labels)
 
+        if self.config.lookahead_type == "lae":
+            #  Extend decoder input with lookahead_size extra positions filled by zero as especial tokens:
+            zeros_to_add = torch.zeros(
+                decoder_input_ids.shape[0],
+                self.config.lookahead_size,
+                device=decoder_input_ids.device,
+                dtype=decoder_input_ids.dtype,
+            )
+            decoder_input_ids = torch.cat((decoder_input_ids, zeros_to_add), dim=1)
+            if decoder_attention_mask is not None:
+                ones_to_add = torch.ones(
+                    decoder_attention_mask.shape[0],
+                    self.config.lookahead_size,
+                    device=decoder_attention_mask.device,
+                    dtype=decoder_attention_mask.dtype,
+                )
+                decoder_attention_mask = torch.cat((decoder_attention_mask, ones_to_add), dim=1)
+
         decoder_outputs: Seq2SeqModelOutput = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1151,10 +1169,12 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             logits = logits / decoder_config.final_logit_softcapping
             logits = torch.tanh(logits)
             logits = logits * decoder_config.final_logit_softcapping
-        if self.config.lookahead_size > 0:
+        lookahead_logits = None
+        if self.config.lookahead_type == "la":
             lookahead_logits = self.la_heads(hidden_states[:, slice_indices, :])
-        else:
-            lookahead_logits = None
+        elif self.config.lookahead_type == "lae":
+            lookahead_logits = logits[:, -self.config.lookahead_size :].contiguous()
+            logits = logits[:, : -self.config.lookahead_size].contiguous()
 
         lookahead_loss = None
         loss = None
