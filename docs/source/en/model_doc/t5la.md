@@ -70,15 +70,3 @@ The original code can be found [here](<INSERT LINK TO GITHUB REPO HERE>).
 ## load_tf_weights_in_t5
 
 [[autodoc]] load_tf_weights_in_t5
-
-## T5LaForQuestionAnswering
-
-[[autodoc]] T5LaForQuestionAnswering
-
-## T5LaForSequenceClassification
-
-[[autodoc]] T5LaForSequenceClassification
-
-## T5LaForTokenClassification
-
-[[autodoc]] T5LaForTokenClassification
