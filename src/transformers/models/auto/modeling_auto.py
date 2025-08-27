@@ -363,7 +363,7 @@ MODEL_MAPPING_NAMES = OrderedDict(
         ("switch_transformers", "SwitchTransformersModel"),
         ("t5", "T5Model"),
         ("t5gemma", "T5GemmaModel"),
-        ("t5la", "T5LaModel"),
+        ("t5la", "T5LaForConditionalGeneration"),
         ("table-transformer", "TableTransformerModel"),
         ("tapas", "TapasModel"),
         ("textnet", "TextNetModel"),

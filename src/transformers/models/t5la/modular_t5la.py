@@ -213,7 +213,7 @@ class T5LaPreTrainedModel(T5PreTrainedModel):
             module.weight.data.fill_(factor * 1.0)
         elif isinstance(
             module,
-            (T5LaModel, T5LaForConditionalGeneration, T5LaEncoderModel),
+            (T5LaForConditionalGeneration, T5LaEncoderModel),
         ):
             # Mesh TensorFlow embeddings initialization
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
@@ -297,10 +297,7 @@ class LookAheadHeads(nn.Module):
 class Seq2SeqLMOutputLA(Seq2SeqLMOutput):
     lookahead_logits: torch.FloatTensor = None
     lookahead_loss: Optional[torch.FloatTensor] = None
-
-
-class T5LaModel(T5Model):
-    pass
+    decoder_last_hidden_state: Optional[tuple[torch.FloatTensor, ...]] = None
 
 
 class T5LaForConditionalGeneration(T5ForConditionalGeneration):
@@ -535,6 +532,7 @@ class T5LaForConditionalGeneration(T5ForConditionalGeneration):
             logits=lm_logits,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
+            decoder_last_hidden_state=decoder_outputs.last_hidden_state,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state,
@@ -554,7 +552,6 @@ __all__ = [
     "T5LaOnnxConfig",
     "T5LaEncoderModel",
     "T5LaForConditionalGeneration",
-    "T5LaModel",
     "T5LaPreTrainedModel",
     "load_tf_weights_in_t5",
 ]
