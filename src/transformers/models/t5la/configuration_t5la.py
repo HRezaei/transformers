@@ -107,6 +107,7 @@ class T5LaConfig(PretrainedConfig):
         pad_token_id=0,
         eos_token_id=1,
         classifier_dropout=0.0,
+        decoder_start_token_id=0,
         lookahead_type="la",
         lookahead_size=1,
         **kwargs,
@@ -115,6 +116,7 @@ class T5LaConfig(PretrainedConfig):
             pad_token_id=pad_token_id,
             eos_token_id=eos_token_id,
             is_encoder_decoder=is_encoder_decoder,
+            decoder_start_token_id=decoder_start_token_id,
             **kwargs,
         )
         self.vocab_size = vocab_size
