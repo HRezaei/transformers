@@ -1610,10 +1610,10 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
             loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
             # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
             if self.config.lookahead_size > 0 and lookahead_targets is not None:
-                lookahead_loss = self.loss_function(
+                lookahead_loss = loss_fct(
                     lookahead_logits.reshape(-1, lookahead_logits.size(-1)),
                     lookahead_targets.view(-1),
-                    vocab_size=self.config.vocab_size,
+                    # vocab_size=self.config.vocab_size,
                 )
                 loss = (loss + lookahead_loss) / 2
 
