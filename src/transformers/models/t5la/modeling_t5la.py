@@ -1615,7 +1615,14 @@ class T5LaForConditionalGeneration(T5LaPreTrainedModel, GenerationMixin):
                     lookahead_targets.view(-1),
                     # vocab_size=self.config.vocab_size,
                 )
-                loss = (loss + lookahead_loss) / 2
+                if self.config.lookahead_type == "la":
+                    # If we simply add, the loss will be larger than a non-LA T5 model because
+                    # in a normal T5, the number of tokens are much lower:
+                    loss = (loss + lookahead_loss) / (1 + self.config.lookahead_size)
+                else:
+                    loss = (loss * lm_logits.shape[1] + lookahead_loss * self.config.lookahead_size) / (
+                        lm_logits.shape[1] + self.config.lookahead_size
+                    )
 
         if not return_dict:
             output = (lm_logits,) + decoder_outputs[1:] + encoder_outputs
