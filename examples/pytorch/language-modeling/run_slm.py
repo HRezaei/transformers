@@ -65,29 +65,6 @@ MODEL_CONFIG_CLASSES = list(MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
-class PerplexityTrainer(Trainer):
-    def log(self, logs: dict):
-        if self.state.global_step == 0:
-            return
-
-        if self.state.is_world_process_zero:
-            metrics_to_log = {}
-            for k, v in logs.items():
-                if k.startswith("eval_"):
-                    if "loss" in k:
-                        try:
-                            perplexity = math.exp(v)
-                            metrics_to_log[k.replace("loss", "perplexity")] = perplexity
-                        except OverflowError:
-                            metrics_to_log[k.replace("loss", "perplexity")] = float("inf")
-                    metrics_to_log[k] = v
-                else:
-                    metrics_to_log[k] = v
-            super().log(metrics_to_log)
-        else:
-            super().log(logs)
-
-
 @dataclass
 class ModelArguments:
     """
@@ -760,7 +737,7 @@ def main():
             return metric.compute(predictions=preds, references=labels)
 
     # Initialize our Trainer
-    trainer = PerplexityTrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
