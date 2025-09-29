@@ -33,7 +33,7 @@ from transformers.testing_utils import (
     slow,
     torch_device,
 )
-from transformers.utils import cached_property
+from functools import cached_property
 from transformers.utils.fx import symbolic_trace
 
 from ...generation.test_utils import GenerationTesterMixin

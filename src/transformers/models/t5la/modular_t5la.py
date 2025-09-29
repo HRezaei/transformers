@@ -696,5 +696,4 @@ __all__ = [
     "T5LaConfig",
     "T5LaForConditionalGeneration",
     "T5LaPreTrainedModel",
-    "load_tf_weights_in_t5la",
 ]
