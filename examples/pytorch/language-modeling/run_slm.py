@@ -305,7 +305,7 @@ def main():
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_clm", model_args, data_args)
+    send_example_telemetry("run_slm", model_args, data_args)
 
     # Setup logging
     logging.basicConfig(
@@ -671,11 +671,9 @@ def main():
     # https://huggingface.co/docs/datasets/process#map
 
     grouping_function = group_texts
-    model_args_overrides = [i.split("=") for i in model_args.config_overrides.split(",")]
-    model_args_overrides = {i[0]: i[1] for i in model_args_overrides}
 
-    lookahead_size = int(model_args_overrides["lookahead_size"]) if "lookahead_size" in model_args_overrides else None
-    lookahead_type = model_args_overrides.get("lookahead_type", None)
+    lookahead_size = config.lookahead_size if hasattr(config, "lookahead_size") else None
+    lookahead_type = config.lookahead_type if hasattr(config, "lookahead_type") else None
     if lookahead_size and lookahead_size > 0:
         if lookahead_type == "la":
             grouping_function = group_texts_for_lookahead
