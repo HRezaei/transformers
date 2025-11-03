@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 class LookaheadTrainer(Trainer):
     def log(self, logs: dict, start_time: Optional[float] = None):
-        if self.state.global_step == 0:
-            return
+        #By this if, eval-only runs are not logged in wandb
+        #if self.state.global_step == 0:
+        #    return
         # Inject loss2 into training logs
         # if self.lookahead_loss is not None:
         #    logs["train/lookahead_loss"] = self.lookahead_loss
@@ -61,6 +62,14 @@ class LookaheadTrainer(Trainer):
         key = "train" if model.training else "eval"
         self.lookahead_losses[key].append(lookahead_loss)
 
+        base_loss = outputs["base_loss"].detach().cpu().item()
+        if not hasattr(self, "base_losses"):
+            self.base_losses = {
+                "train": [],
+                "eval": [],
+            }
+        self.base_losses[key].append(base_loss)
+
         return (loss, outputs) if return_outputs else loss
 
     def _maybe_log_save_evaluate(
@@ -92,9 +101,10 @@ class LookaheadTrainer(Trainer):
 
             logs["lookahead_loss"] = np.mean(self.lookahead_losses["train"])
             self.lookahead_losses["train"] = []
+            logs["base_loss"] = np.mean(self.base_losses["train"])
+            self.base_losses["train"] = []
 
             self.log(logs, start_time)
-        metrics = None
         if self.control.should_evaluate:
             metrics = self._evaluate(trial, ignore_keys_for_eval)
             is_new_best_metric = self._determine_best_metric(metrics=metrics, trial=trial)
@@ -303,6 +313,8 @@ class LookaheadTrainer(Trainer):
             # self.control = self.callback_handler.on_compute_metrics(args, self.state, self.control)
             metrics["lookahead_loss"] = np.mean(self.lookahead_losses["eval"])
             self.lookahead_losses["eval"] = []
+            metrics["base_loss"] = np.mean(self.base_losses["eval"])
+            self.base_losses["eval"] = []
         elif metrics is None:
             metrics = {}
 
