@@ -828,11 +828,12 @@ def main():
                 if log_dir:
                     os.makedirs(log_dir, exist_ok=True)
 
-        def _log_predictions(self, global_step: int):
+        def _log_predictions(self, global_step: int, current_loss: Optional[float] = None):
             model_was_training = self.model.training
             self.model.eval()
             sample_idx = 0
-            log_lines = [f"=== step {global_step} ==="]
+            loss_note = f" loss {current_loss:.4f}" if current_loss is not None else ""
+            log_lines = [f"=== step {global_step}{loss_note} ==="]
             with torch.no_grad():
                 for batch in self.data_loader:
                     batch_on_device = {k: v.to(self.device) for k, v in batch.items()}
@@ -873,7 +874,8 @@ def main():
         def on_log(self, args, state, control, logs=None, **kwargs):
             if self.learned_steps is not None:
                 return control
-            self._log_predictions(state.global_step)
+            current_loss = logs.get("loss") if logs else None
+            self._log_predictions(state.global_step, current_loss)
             if logs and "loss" in logs and logs["loss"] <= self.target_loss:
                 self.learned_steps = state.global_step
                 logger.info(
@@ -918,14 +920,14 @@ def main():
         else:
             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
-        if loss_callback is not None:
-            if loss_callback.learned_steps is not None:
-                metrics["k_steps_to_learn"] = loss_callback.learned_steps
-            else:
-                metrics["k_steps_to_learn"] = trainer.state.global_step
-                logger.warning(
-                    "Target loss not reached by end of training; recording final global_step as k_steps_to_learn."
-                )
+            if loss_callback is not None:
+                if loss_callback.learned_steps is not None:
+                    metrics["steps_to_learn"] = loss_callback.learned_steps
+                else:
+                    metrics["steps_to_learn"] = trainer.state.global_step
+                    logger.warning(
+                        "Target loss not reached by end of training; recording final global_step as steps_to_learn."
+                    )
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
