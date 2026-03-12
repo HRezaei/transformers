@@ -31,6 +31,7 @@ from typing import Optional
 import datasets
 import evaluate
 import torch
+from torch.utils.data import DataLoader
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
 
 import transformers
@@ -785,13 +786,48 @@ def main():
     )
 
     class LossThresholdCallback(TrainerCallback):
-        def __init__(self, target_loss: float):
+        def __init__(self, target_loss: float, model, tokenizer, dataset, device, batch_size: int):
             self.target_loss = target_loss
             self.learned_steps = None
+            self.model = model
+            self.tokenizer = tokenizer
+            self.device = device
+            self.data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=default_data_collator)
+
+        def _log_predictions(self):
+            model_was_training = self.model.training
+            self.model.eval()
+            sample_idx = 0
+            with torch.no_grad():
+                for batch in self.data_loader:
+                    batch_on_device = {k: v.to(self.device) for k, v in batch.items()}
+                    labels = batch_on_device.get("labels")
+                    outputs = self.model(**batch_on_device)
+                    preds = outputs.logits.argmax(dim=-1).detach().cpu()
+                    labels_cpu = labels.detach().cpu() if labels is not None else None
+                    for i in range(preds.size(0)):
+                        label_ids = labels_cpu[i] if labels_cpu is not None else None
+                        pred_ids = preds[i]
+                        if label_ids is not None:
+                            valid_mask = label_ids != -100
+                            label_ids = label_ids[valid_mask]
+                            pred_ids = pred_ids[: label_ids.size(0)]
+                            pred_ids = pred_ids[valid_mask]
+                        pred_text = self.tokenizer.decode(pred_ids.tolist(), skip_special_tokens=True)
+                        label_text = (
+                            self.tokenizer.decode(label_ids.tolist(), skip_special_tokens=True)
+                            if label_ids is not None
+                            else ""
+                        )
+                        logger.info(f"Sample {sample_idx}: \npreds_text='{pred_text}' \nlabels_text='{label_text}'")
+                        sample_idx += 1
+            if model_was_training:
+                self.model.train()
 
         def on_log(self, args, state, control, logs=None, **kwargs):
             if self.learned_steps is not None:
                 return control
+            self._log_predictions()
             if logs and "loss" in logs and logs["loss"] <= self.target_loss:
                 self.learned_steps = state.global_step
                 logger.info(
@@ -804,7 +840,15 @@ def main():
 
     loss_callback = None
     if training_args.do_train and mem_args.measure_k > 0:
-        loss_callback = LossThresholdCallback(mem_args.measure_target_loss)
+        measure_batch_size = mem_args.measure_batch_size or training_args.per_device_train_batch_size
+        loss_callback = LossThresholdCallback(
+            mem_args.measure_target_loss,
+            model,
+            tokenizer,
+            train_dataset,
+            training_args.device,
+            measure_batch_size,
+        )
         trainer.add_callback(loss_callback)
 
     # Training
