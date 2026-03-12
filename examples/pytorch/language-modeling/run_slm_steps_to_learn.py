@@ -186,6 +186,15 @@ class MemorizationArguments:
             "help": "Optional batch size for measurement passes. Defaults to per_device_train_batch_size if not set.",
         },
     )
+    measure_log_file: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional file path to append decoded predictions/labels for the measured samples. "
+                "If not set, logs are emitted via logger.info."
+            )
+        },
+    )
 
 
 @dataclass
@@ -786,18 +795,36 @@ def main():
     )
 
     class LossThresholdCallback(TrainerCallback):
-        def __init__(self, target_loss: float, model, tokenizer, dataset, device, batch_size: int):
+        def __init__(
+            self,
+            target_loss: float,
+            model,
+            tokenizer,
+            dataset,
+            device,
+            batch_size: int,
+            log_path: Optional[str] = None,
+        ):
             self.target_loss = target_loss
             self.learned_steps = None
             self.model = model
             self.tokenizer = tokenizer
             self.device = device
             self.data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=default_data_collator)
+            self.log_path = log_path
+            self._ensure_log_dir()
 
-        def _log_predictions(self):
+        def _ensure_log_dir(self):
+            if self.log_path:
+                log_dir = os.path.dirname(self.log_path)
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
+
+        def _log_predictions(self, global_step: int):
             model_was_training = self.model.training
             self.model.eval()
             sample_idx = 0
+            log_lines = [f"=== step {global_step} ==="]
             with torch.no_grad():
                 for batch in self.data_loader:
                     batch_on_device = {k: v.to(self.device) for k, v in batch.items()}
@@ -819,15 +846,26 @@ def main():
                             if label_ids is not None
                             else ""
                         )
-                        logger.info(f"Sample {sample_idx}: \npreds_text='{pred_text}' \nlabels_text='{label_text}'")
+                        log_lines.append(
+                            f"Sample {sample_idx}:\n"
+                            f"preds  : {pred_text}\n"
+                            f"labels : {label_text}"
+                        )
                         sample_idx += 1
+            if self.log_path:
+                with open(self.log_path, "a", encoding="utf-8") as f:
+                    if log_lines:
+                        f.write("\n".join(log_lines) + "\n")
+            else:
+                for line in log_lines:
+                    logger.info(line)
             if model_was_training:
                 self.model.train()
 
         def on_log(self, args, state, control, logs=None, **kwargs):
             if self.learned_steps is not None:
                 return control
-            self._log_predictions()
+            self._log_predictions(state.global_step)
             if logs and "loss" in logs and logs["loss"] <= self.target_loss:
                 self.learned_steps = state.global_step
                 logger.info(
@@ -848,6 +886,7 @@ def main():
             train_dataset,
             training_args.device,
             measure_batch_size,
+            mem_args.measure_log_file,
         )
         trainer.add_callback(loss_callback)
 
