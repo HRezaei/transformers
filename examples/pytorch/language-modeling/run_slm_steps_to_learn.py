@@ -26,6 +26,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from itertools import chain, islice
+import random
 from typing import Optional
 
 import datasets
@@ -766,15 +767,22 @@ def main():
             preds = preds[:, :-1].reshape(-1)
             return metric.compute(predictions=preds, references=labels)
 
-    # If requested, pin both train and eval to the same first-k samples.
+    # If requested, pin both train and eval to the same k samples, chosen per seed.
     if training_args.do_train and mem_args.measure_k > 0:
+        rng = random.Random(training_args.seed)
         if data_args.streaming:
-            first_k = list(islice(train_dataset, mem_args.measure_k))
+            skip_cap = (data_args.max_train_samples or mem_args.measure_k * 100)
+            skip_cap = max(skip_cap - mem_args.measure_k, 0)
+            skip_n = rng.randint(0, skip_cap) if skip_cap > 0 else 0
+            first_k = list(islice(train_dataset.skip(skip_n), mem_args.measure_k))
             if len(first_k) == 0:
                 raise ValueError("measure_k > 0 but could not cache any samples from streaming dataset.")
         else:
             k = min(mem_args.measure_k, len(train_dataset))
-            first_k = train_dataset.select(range(k))
+            max_offset = max(len(train_dataset) - k, 0)
+            start = rng.randint(0, max_offset)
+            indices = list(range(start, start + k))
+            first_k = train_dataset.select(indices)
 
         train_dataset = first_k
         if training_args.do_eval:
