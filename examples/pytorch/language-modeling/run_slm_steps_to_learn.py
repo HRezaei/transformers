@@ -181,6 +181,12 @@ class MemorizationArguments:
         default=0.01,
         metadata={"help": "Average loss threshold that marks the k samples as learned."},
     )
+    measure_consecutive_steps: int = field(
+        default=1,
+        metadata={
+            "help": "Stop training only after the measured loss stays below the target for this many consecutive steps.",
+        },
+    )
     measure_batch_size: Optional[int] = field(
         default=None,
         metadata={
@@ -812,8 +818,11 @@ def main():
             device,
             batch_size: int,
             log_path: Optional[str] = None,
+            consecutive_steps: int = 1,
         ):
             self.target_loss = target_loss
+            self.consecutive_steps = max(consecutive_steps, 1)
+            self.steps_below_threshold = 0
             self.learned_steps = None
             self.model = model
             self.tokenizer = tokenizer
@@ -876,14 +885,19 @@ def main():
                 return control
             current_loss = logs.get("loss") if logs else None
             self._log_predictions(state.global_step, current_loss)
-            if logs and "loss" in logs and logs["loss"] <= self.target_loss:
-                self.learned_steps = state.global_step
-                logger.info(
-                    f"Target loss {self.target_loss} reached at global step {self.learned_steps} "
-                    f"(logged loss={logs['loss']:.4f})."
-                )
-                control.should_training_stop = True
-                control.should_epoch_stop = True
+            if logs and "loss" in logs:
+                if logs["loss"] <= self.target_loss:
+                    self.steps_below_threshold += 1
+                else:
+                    self.steps_below_threshold = 0
+                if self.steps_below_threshold >= self.consecutive_steps:
+                    self.learned_steps = state.global_step
+                    logger.info(
+                        f"Target loss {self.target_loss} reached at global step {self.learned_steps} "
+                        f"(logged loss={logs['loss']:.4f}) for {self.consecutive_steps} consecutive step(s)."
+                    )
+                    control.should_training_stop = True
+                    control.should_epoch_stop = True
             return control
 
     loss_callback = None
@@ -897,6 +911,7 @@ def main():
             training_args.device,
             measure_batch_size,
             mem_args.measure_log_file,
+            mem_args.measure_consecutive_steps,
         )
         trainer.add_callback(loss_callback)
 
