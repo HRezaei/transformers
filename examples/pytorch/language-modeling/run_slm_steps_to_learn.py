@@ -24,6 +24,7 @@ import logging
 import math
 import os
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 from itertools import chain, islice
 import random
@@ -48,6 +49,7 @@ from transformers import (
     TrainerCallback,
     default_data_collator,
     is_torch_xla_available,
+    is_wandb_available,
     set_seed,
 )
 from transformers.testing_utils import CaptureLogger
@@ -829,6 +831,7 @@ def main():
             self.device = device
             self.data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=default_data_collator)
             self.log_path = log_path
+            self._log_blocks = deque(maxlen=100)
             self._ensure_log_dir()
 
         def _ensure_log_dir(self):
@@ -871,14 +874,30 @@ def main():
                         )
                         sample_idx += 1
             if self.log_path:
-                with open(self.log_path, "a", encoding="utf-8") as f:
-                    if log_lines:
-                        f.write("\n".join(log_lines) + "\n")
+                self._log_blocks.append("\n".join(log_lines) + "\n")
+                with open(self.log_path, "w", encoding="utf-8") as f:
+                    f.writelines(self._log_blocks)
             else:
                 for line in log_lines:
                     logger.info(line)
             if model_was_training:
                 self.model.train()
+
+        def _log_wandb_artifact(self):
+            if not self.log_path or not os.path.exists(self.log_path) or not is_wandb_available():
+                return
+            import wandb
+
+            if wandb.run is None:
+                return
+            artifact = wandb.Artifact(name="measured_samples", type="measurement_log")
+            artifact.add_file(self.log_path)
+            wandb.log_artifact(artifact)
+            logger.info(f"Uploaded {self.log_path} as wandb artifact 'measured_samples'.")
+
+        def on_train_end(self, args, state, control, **kwargs):
+            if state.is_world_process_zero:
+                self._log_wandb_artifact()
 
         def on_log(self, args, state, control, logs=None, **kwargs):
             if self.learned_steps is not None:
