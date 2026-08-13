@@ -831,7 +831,7 @@ def main():
             self.device = device
             self.data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=default_data_collator)
             self.log_path = log_path
-            self._log_blocks = deque(maxlen=100)
+            self._log_blocks = deque(maxlen=50)
             self._ensure_log_dir()
 
         def _ensure_log_dir(self):
