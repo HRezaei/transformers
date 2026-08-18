@@ -934,6 +934,18 @@ def main():
         )
         trainer.add_callback(loss_callback)
 
+    if is_wandb_available() and training_args.report_to and "wandb" in training_args.report_to:
+        import wandb
+
+        if wandb.run is not None:
+            llm_name = os.path.basename(model_args.model_name_or_path or "scratch")
+            run_name = (
+                f"{llm_name}-{mem_args.measure_k}Samples"
+                f"-ths{mem_args.measure_target_loss}"
+                f"-Seed{training_args.seed}"
+            )
+            wandb.run.name = run_name
+
     # Training
     if training_args.do_train:
         checkpoint = None
