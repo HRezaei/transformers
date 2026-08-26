@@ -591,31 +591,78 @@ def main():
     # Preprocessing the datasets.
     # First we tokenize all the texts.
 
+    if hasattr(config, "max_position_embeddings"):
+        max_pos_embeddings = config.max_position_embeddings
+    else:
+        # Define a default value if the attribute is missing in the config.
+        max_pos_embeddings = 1024
+
+    if data_args.block_size is None:
+        block_size = tokenizer.model_max_length
+        if block_size > max_pos_embeddings:
+            logger.warning(
+                f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
+                f"Using block_size={min(1024, max_pos_embeddings)} instead. You can change that default value by passing --block_size xxx."
+            )
+            if max_pos_embeddings > 0:
+                block_size = min(1024, max_pos_embeddings)
+            else:
+                block_size = 1024
+    else:
+        if data_args.block_size > tokenizer.model_max_length:
+            logger.warning(
+                f"The block_size passed ({data_args.block_size}) is larger than the maximum length for the model "
+                f"({tokenizer.model_max_length}). Using block_size={tokenizer.model_max_length}."
+            )
+        block_size = min(data_args.block_size, tokenizer.model_max_length)
+
     # If unseen_words is set, inject them into the first k raw sentences before tokenization.
+    # Each sentence is truncated to block_size words and the unseen word is placed at the middle,
+    # so that group_texts (which concatenates and splits by block_size) maps each block 1:1 to one sentence.
     _unseen_words_applied = False
     if mem_args.unseen_words and training_args.do_train and mem_args.measure_k > 0:
         _unseen_words_list = [w.strip() for w in mem_args.unseen_words.split(",")]
-        _rng = random.Random(training_args.seed)
 
         _column_names = list(raw_datasets["train"].features)
         _text_column_name = "text" if "text" in _column_names else _column_names[0]
 
-        if data_args.streaming:
-            _raw_k_samples = list(islice(raw_datasets["train"], mem_args.measure_k))
-        else:
-            _k = min(mem_args.measure_k, len(raw_datasets["train"]))
-            _raw_k_samples = raw_datasets["train"].select(range(_k))
-
         _modified_texts = []
-        for _i, _sample in enumerate(_raw_k_samples):
-            _text = _sample[_text_column_name]
-            _words = _text.split()
-            if _words:
-                _unseen_word = _unseen_words_list[_i % len(_unseen_words_list)]
-                _pos = _rng.randint(0, len(_words) - 1)
+        _sample_idx = 0
+        if data_args.streaming:
+            for _sample in raw_datasets["train"]:
+                if len(_modified_texts) >= mem_args.measure_k:
+                    break
+                _text = _sample[_text_column_name]
+                _words = _text.split()
+                if len(_words) < block_size:
+                    _sample_idx += 1
+                    continue
+                _words = _words[:block_size]
+                _unseen_word = _unseen_words_list[len(_modified_texts) % len(_unseen_words_list)]
+                _pos = block_size // 2
                 _words[_pos] = _unseen_word
-            _modified_texts.append(" ".join(_words))
-
+                _modified_texts.append(" ".join(_words))
+                _sample_idx += 1
+        else:
+            _dataset_iter = iter(raw_datasets["train"])
+            while len(_modified_texts) < mem_args.measure_k:
+                try:
+                    _sample = next(_dataset_iter)
+                except StopIteration:
+                    break
+                _text = _sample[_text_column_name]
+                _words = _text.split()
+                if len(_words) < block_size:
+                    _sample_idx += 1
+                    continue
+                _words = _words[:block_size]
+                _unseen_word = _unseen_words_list[len(_modified_texts) % len(_unseen_words_list)]
+                _pos = block_size // 2
+                _words[_pos] = _unseen_word
+                _modified_texts.append(" ".join(_words))
+                _sample_idx += 1
+        for modified_line in _modified_texts:
+            logger.info(modified_line)
         _modified_dataset = Dataset.from_dict({_text_column_name: _modified_texts})
         raw_datasets = datasets.DatasetDict({"train": _modified_dataset, "validation": _modified_dataset})
         _unseen_words_applied = True
@@ -656,30 +703,6 @@ def main():
                 batched=True,
                 remove_columns=column_names,
             )
-    if hasattr(config, "max_position_embeddings"):
-        max_pos_embeddings = config.max_position_embeddings
-    else:
-        # Define a default value if the attribute is missing in the config.
-        max_pos_embeddings = 1024
-
-    if data_args.block_size is None:
-        block_size = tokenizer.model_max_length
-        if block_size > max_pos_embeddings:
-            logger.warning(
-                f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
-                f"Using block_size={min(1024, max_pos_embeddings)} instead. You can change that default value by passing --block_size xxx."
-            )
-            if max_pos_embeddings > 0:
-                block_size = min(1024, max_pos_embeddings)
-            else:
-                block_size = 1024
-    else:
-        if data_args.block_size > tokenizer.model_max_length:
-            logger.warning(
-                f"The block_size passed ({data_args.block_size}) is larger than the maximum length for the model "
-                f"({tokenizer.model_max_length}). Using block_size={tokenizer.model_max_length}."
-            )
-        block_size = min(data_args.block_size, tokenizer.model_max_length)
 
     # Main data processing function that will concatenate all texts from our dataset and generate chunks of block_size.
     def group_texts(examples):
@@ -695,6 +718,11 @@ def main():
             for k, t in concatenated_examples.items()
         }
         result["labels"] = result["input_ids"].copy()
+        return result
+
+    def group_texts_no_concat(examples):
+        result = {k: [list(x[:block_size]) for x in examples[k]] for k in examples.keys()}
+        result["labels"] = [list(x[:block_size]) for x in examples["input_ids"]]
         return result
 
     def group_texts_for_lookahead_efficient(examples):
@@ -754,13 +782,16 @@ def main():
 
     grouping_function = group_texts
 
-    lookahead_size = config.lookahead_size if hasattr(config, "lookahead_size") else None
-    lookahead_type = config.lookahead_type if hasattr(config, "lookahead_type") else None
-    if lookahead_size and lookahead_size > 0:
-        if lookahead_type == "la":
-            grouping_function = group_texts_for_lookahead
-        else:
-            grouping_function = group_texts_for_lookahead_efficient
+    if _unseen_words_applied:
+        grouping_function = group_texts_no_concat
+    else:
+        lookahead_size = config.lookahead_size if hasattr(config, "lookahead_size") else None
+        lookahead_type = config.lookahead_type if hasattr(config, "lookahead_type") else None
+        if lookahead_size and lookahead_size > 0:
+            if lookahead_type == "la":
+                grouping_function = group_texts_for_lookahead
+            else:
+                grouping_function = group_texts_for_lookahead_efficient
 
     with training_args.main_process_first(desc="grouping texts together"):
         if not data_args.streaming:
