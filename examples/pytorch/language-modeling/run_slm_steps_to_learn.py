@@ -34,7 +34,7 @@ import datasets
 import evaluate
 import torch
 from torch.utils.data import DataLoader
-from datasets import IterableDataset, IterableDatasetDict, load_dataset
+from datasets import Dataset, IterableDataset, IterableDatasetDict, load_dataset
 
 import transformers
 from transformers import (
@@ -201,6 +201,17 @@ class MemorizationArguments:
             "help": (
                 "Optional file path to append decoded predictions/labels for the measured samples. "
                 "If not set, logs are emitted via logger.info."
+            )
+        },
+    )
+    unseen_words: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Comma-separated list of unseen words to inject into the training sentences "
+                "(e.g. 'dax,flarn,mudri,sebu'). When set alongside measure_k>0, each of the "
+                "first k raw sentences has one random word replaced with the next unseen word "
+                "in cycling order. The modified sentences are used for both input and labels."
             )
         },
     )
@@ -579,6 +590,36 @@ def main():
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
+
+    # If unseen_words is set, inject them into the first k raw sentences before tokenization.
+    _unseen_words_applied = False
+    if mem_args.unseen_words and training_args.do_train and mem_args.measure_k > 0:
+        _unseen_words_list = [w.strip() for w in mem_args.unseen_words.split(",")]
+        _rng = random.Random(training_args.seed)
+
+        _column_names = list(raw_datasets["train"].features)
+        _text_column_name = "text" if "text" in _column_names else _column_names[0]
+
+        if data_args.streaming:
+            _raw_k_samples = list(islice(raw_datasets["train"], mem_args.measure_k))
+        else:
+            _k = min(mem_args.measure_k, len(raw_datasets["train"]))
+            _raw_k_samples = raw_datasets["train"].select(range(_k))
+
+        _modified_texts = []
+        for _i, _sample in enumerate(_raw_k_samples):
+            _text = _sample[_text_column_name]
+            _words = _text.split()
+            if _words:
+                _unseen_word = _unseen_words_list[_i % len(_unseen_words_list)]
+                _pos = _rng.randint(0, len(_words) - 1)
+                _words[_pos] = _unseen_word
+            _modified_texts.append(" ".join(_words))
+
+        _modified_dataset = Dataset.from_dict({_text_column_name: _modified_texts})
+        raw_datasets = datasets.DatasetDict({"train": _modified_dataset, "validation": _modified_dataset})
+        _unseen_words_applied = True
+
     if training_args.do_train:
         column_names = list(raw_datasets["train"].features)
     else:
@@ -776,7 +817,8 @@ def main():
             return metric.compute(predictions=preds, references=labels)
 
     # If requested, pin both train and eval to the same k samples, chosen per seed.
-    if training_args.do_train and mem_args.measure_k > 0:
+    # Skip if unseen_words already reduced the raw data to k samples before tokenization.
+    if training_args.do_train and mem_args.measure_k > 0 and not _unseen_words_applied:
         rng = random.Random(training_args.seed)
         if data_args.streaming:
             skip_cap = (data_args.max_train_samples or mem_args.measure_k * 100)
