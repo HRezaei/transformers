@@ -629,7 +629,11 @@ def main():
         _modified_texts = []
         _sample_idx = 0
         if data_args.streaming:
-            for _sample in raw_datasets["train"]:
+            _rng = random.Random(training_args.seed)
+            _skip_cap = (data_args.max_train_samples or mem_args.measure_k * 100)
+            _skip_cap = max(_skip_cap - mem_args.measure_k, 0)
+            _skip_n = _rng.randint(0, _skip_cap) if _skip_cap > 0 else 0
+            for _sample in islice(raw_datasets["train"], _skip_n, None):
                 if len(_modified_texts) >= mem_args.measure_k:
                     break
                 _text = _sample[_text_column_name]
